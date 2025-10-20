@@ -92,6 +92,7 @@ builder.Services.AddSwaggerGen(options =>
             Email = "support@activooscrm.com"
         }
     });
+    
 
     // Add JWT Authentication to Swagger
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
