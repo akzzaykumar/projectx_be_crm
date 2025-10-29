@@ -1,17 +1,20 @@
-using ActivoosCRM.Domain.Entities;
+using ActivoosCRM.Domain.Common;
 
 namespace ActivoosCRM.Application.Common.Interfaces;
 
 /// <summary>
 /// Generic repository interface
 /// </summary>
-public interface IRepository<T> where T : class
+public interface IRepository<T> where T : BaseEntity
 {
-    Task<T?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
-    Task<IEnumerable<T>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<T?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<T>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<T>> GetPagedAsync(int skip, int take, CancellationToken cancellationToken = default);
     Task<T> AddAsync(T entity, CancellationToken cancellationToken = default);
     Task UpdateAsync(T entity, CancellationToken cancellationToken = default);
     Task DeleteAsync(T entity, CancellationToken cancellationToken = default);
+    Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -19,12 +22,6 @@ public interface IRepository<T> where T : class
 /// </summary>
 public interface IUnitOfWork : IDisposable
 {
-    IRepository<User> Users { get; }
-    IRepository<Customer> Customers { get; }
-    IRepository<Activity> Activities { get; }
-    IRepository<Booking> Bookings { get; }
-    IRepository<TimeSlot> TimeSlots { get; }
-
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
     Task CommitTransactionAsync(CancellationToken cancellationToken = default);

@@ -5,6 +5,9 @@ namespace ActivoosCRM.Domain.Common;
 /// </summary>
 public abstract class AuditableEntity : BaseEntity
 {
-    public int? CreatedBy { get; set; }
-    public int? UpdatedBy { get; set; }
+    public Guid? CreatedBy { get; set; }
+    public Guid? UpdatedBy { get; set; }
+    public bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedBy { get; set; }
 }

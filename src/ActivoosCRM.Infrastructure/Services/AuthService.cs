@@ -1,5 +1,4 @@
 using ActivoosCRM.Application.Common.Interfaces;
-using ActivoosCRM.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -12,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ActivoosCRM.Infrastructure.Services;
 
 /// <summary>
-/// Authentication service implementation
+/// Authentication service implementation - Will be fully implemented when User entity is added
 /// </summary>
 public class AuthService : IAuthService
 {
@@ -33,19 +32,8 @@ public class AuthService : IAuthService
 
     public async Task<(string AccessToken, string RefreshToken)> GenerateTokensAsync(int userId, string email, string role)
     {
-        var accessToken = GenerateAccessToken(userId, email, role);
-        var refreshToken = GenerateRefreshToken();
-
-        // Store refresh token in database
-        var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.RefreshToken = refreshToken;
-            user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
-            await _context.SaveChangesAsync();
-        }
-
-        return (accessToken, refreshToken);
+        // TODO: Implement when User entity is created
+        throw new NotImplementedException("User entity not yet implemented");
     }
 
     private string GenerateAccessToken(int userId, string email, string role)
@@ -120,26 +108,14 @@ public class AuthService : IAuthService
 
     public async Task<(string AccessToken, string RefreshToken)?> RefreshTokensAsync(string refreshToken)
     {
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.RefreshToken == refreshToken && u.RefreshTokenExpiry > DateTime.UtcNow);
-
-        if (user == null)
-        {
-            return null;
-        }
-
-        return await GenerateTokensAsync(user.Id, user.Email, user.Role);
+        // TODO: Implement when User entity is created
+        throw new NotImplementedException("User entity not yet implemented");
     }
 
     public async Task RevokeRefreshTokenAsync(int userId)
     {
-        var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.RefreshToken = null;
-            user.RefreshTokenExpiry = null;
-            await _context.SaveChangesAsync();
-        }
+        // TODO: Implement when User entity is created
+        throw new NotImplementedException("User entity not yet implemented");
     }
 
     public string HashPassword(string password)

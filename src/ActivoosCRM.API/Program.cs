@@ -1,7 +1,6 @@
-using ActivoosCRM.Application.Common.Interfaces;
+using ActivoosCRM.Application;
+using ActivoosCRM.Infrastructure;
 using ActivoosCRM.Infrastructure.Persistence;
-using ActivoosCRM.Infrastructure.Repositories;
-using ActivoosCRM.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -23,20 +22,14 @@ builder.Host.UseSerilog();
 // Add services to the container
 builder.Services.AddControllers();
 
-// Add DbContext
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        b => b.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName)));
+// Add Application layer services
+builder.Services.AddApplication();
 
-// Register application services
-builder.Services.AddScoped<IApplicationDbContext>(provider =>
-    provider.GetRequiredService<ApplicationDbContext>());
-builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-builder.Services.AddScoped<IAuthService, AuthService>();
+// Add Infrastructure layer services
+builder.Services.AddInfrastructure(builder.Configuration);
 
 // Add Authentication
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
+var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT Secret not configured");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ActivoosCRM";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ActivoosCRM";
 
@@ -58,6 +51,23 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
+})
+.AddGoogle(options =>
+{
+    options.ClientId = builder.Configuration["Authentication:Google:ClientId"]
+        ?? throw new InvalidOperationException("Google ClientId not configured");
+    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]
+        ?? throw new InvalidOperationException("Google ClientSecret not configured");
+
+    // Configure callback path
+    options.CallbackPath = "/signin-google";
+
+    // Request additional user information scopes
+    options.Scope.Add("profile");
+    options.Scope.Add("email");
+
+    // Save tokens for later use
+    options.SaveTokens = true;
 });
 
 builder.Services.AddAuthorization();
@@ -92,16 +102,17 @@ builder.Services.AddSwaggerGen(options =>
             Email = "support@activooscrm.com"
         }
     });
-    
+
 
     // Add JWT Authentication to Swagger
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Description = "JWT Authorization header using the Bearer scheme. Enter your token in the text input below.",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -113,7 +124,10 @@ builder.Services.AddSwaggerGen(options =>
                 {
                     Type = ReferenceType.SecurityScheme,
                     Id = "Bearer"
-                }
+                },
+                Scheme = "oauth2",
+                Name = "Bearer",
+                In = ParameterLocation.Header
             },
             Array.Empty<string>()
         }
@@ -133,7 +147,15 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+// Use HTTPS redirection only if HTTPS URLs are configured
+var httpsUrl = builder.Configuration["ASPNETCORE_HTTPS_PORT"] ??
+               builder.Configuration["Https:Port"] ??
+               builder.Configuration.GetSection("Kestrel:Endpoints:Https").Value;
+
+if (!string.IsNullOrEmpty(httpsUrl))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseSerilogRequestLogging();
 
@@ -147,26 +169,82 @@ app.MapControllers();
 // Health check endpoint
 app.MapHealthChecks("/api/health");
 
-// Run migrations on startup (for development - use proper migration strategy in production)
-using (var scope = app.Services.CreateScope())
+// Apply database migrations with proper error handling
+await ApplyDatabaseMigrationsAsync(app);
+
+Log.Information("Starting ActivoosCRM API");
+
+try
 {
+    Log.Information("About to call app.Run()");
+    app.Run();
+    Log.Information("app.Run() completed normally");
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application startup failed");
+    throw;
+}
+
+// Method to handle database migrations
+static async Task ApplyDatabaseMigrationsAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
 
-        if (app.Environment.IsDevelopment())
+        // Check if database can be connected
+        var canConnect = await context.Database.CanConnectAsync();
+        if (!canConnect)
         {
-            context.Database.Migrate();
-            Log.Information("Database migrations applied successfully");
+            logger.LogError("Cannot connect to the database. Please ensure the database server is running.");
+            throw new InvalidOperationException("Database connection failed");
         }
+
+        // Get pending migrations
+        var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+        var pendingMigrationsList = pendingMigrations.ToList();
+
+        if (pendingMigrationsList.Any())
+        {
+            logger.LogInformation("Found {Count} pending migrations. Applying...", pendingMigrationsList.Count);
+
+            foreach (var migration in pendingMigrationsList)
+            {
+                logger.LogInformation("Pending migration: {Migration}", migration);
+            }
+
+            // Apply migrations
+            await context.Database.MigrateAsync();
+
+            logger.LogInformation("Database migrations applied successfully");
+        }
+        else
+        {
+            logger.LogInformation("Database is up to date. No pending migrations.");
+        }
+
+        // Log applied migrations
+        var appliedMigrations = await context.Database.GetAppliedMigrationsAsync();
+        logger.LogInformation("Total applied migrations: {Count}", appliedMigrations.Count());
     }
     catch (Exception ex)
     {
-        Log.Error(ex, "An error occurred while migrating the database");
+        logger.LogError(ex, "An error occurred while migrating the database. Application startup will continue, but database operations may fail.");
+
+        if (app.Environment.IsDevelopment())
+        {
+            logger.LogWarning("To manually apply migrations, run: dotnet ef database update --project src/ActivoosCRM.Infrastructure");
+        }
+
+        // In production, you might want to stop the application if migrations fail
+        if (!app.Environment.IsDevelopment())
+        {
+            throw;
+        }
     }
 }
-
-Log.Information("Starting ActivoosCRM API");
-
-app.Run();
