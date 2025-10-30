@@ -61,3 +61,5 @@ publish_resilient
 manual_deploy.ps1
 manual_deploy.zip
 resilient_deploy.zip
+publish_fixed
+fixed_deploy.zip

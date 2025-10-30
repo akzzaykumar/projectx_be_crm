@@ -67,7 +67,7 @@ var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
     ?? builder.Configuration["Jwt:Audience"]
     ?? "ActivoosCRM";
 
-builder.Services.AddAuthentication(options =>
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -85,18 +85,19 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
-})
-.AddGoogle(options =>
-{
-    var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
-        ?? builder.Configuration["Authentication:Google:ClientId"];
-    var googleClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")
-        ?? builder.Configuration["Authentication:Google:ClientSecret"];
+});
 
-    // Only configure Google OAuth if credentials are provided
-    if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret) &&
-        googleClientId != "your-google-client-id.apps.googleusercontent.com" &&
-        googleClientSecret != "your-google-client-secret")
+// Only add Google OAuth if credentials are properly configured
+var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+    ?? builder.Configuration["Authentication:Google:ClientId"];
+var googleClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")
+    ?? builder.Configuration["Authentication:Google:ClientSecret"];
+
+if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret) &&
+    googleClientId != "your-google-client-id.apps.googleusercontent.com" &&
+    googleClientSecret != "your-google-client-secret")
+{
+    authenticationBuilder.AddGoogle(options =>
     {
         options.ClientId = googleClientId;
         options.ClientSecret = googleClientSecret;
@@ -110,13 +111,15 @@ builder.Services.AddAuthentication(options =>
 
         // Save tokens for later use
         options.SaveTokens = true;
-    }
-    else
-    {
-        // Log warning that Google OAuth is not configured
-        Log.Warning("Google OAuth is not properly configured. Google authentication will not be available.");
-    }
-});
+    });
+
+    Log.Information("Google OAuth configured successfully");
+}
+else
+{
+    // Log warning that Google OAuth is not configured
+    Log.Warning("Google OAuth is not properly configured. Google authentication will not be available.");
+}
 
 builder.Services.AddAuthorization();
 
