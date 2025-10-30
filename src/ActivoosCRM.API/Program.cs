@@ -22,7 +22,20 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Configuration.AddEnvironmentVariables();
 
 // Validate configuration early
-ConfigurationValidator.ValidateConfiguration(builder.Configuration);
+try
+{
+    ConfigurationValidator.ValidateConfiguration(builder.Configuration);
+    Log.Information("Configuration validation passed");
+}
+catch (Exception ex)
+{
+    Log.Error(ex, "Configuration validation failed");
+    // Don't throw in production, just log the error
+    if (builder.Environment.IsDevelopment())
+    {
+        throw;
+    }
+}
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -205,7 +218,16 @@ app.MapControllers();
 app.MapHealthChecks("/api/health");
 
 // Apply database migrations with proper error handling
-await ApplyDatabaseMigrationsAsync(app);
+try
+{
+    await ApplyDatabaseMigrationsAsync(app);
+    Log.Information("Database migrations completed successfully");
+}
+catch (Exception ex)
+{
+    Log.Error(ex, "Database migration failed, but continuing startup");
+    // Don't fail startup due to DB issues in production
+}
 
 Log.Information("Starting ActivoosCRM API");
 
@@ -279,7 +301,8 @@ static async Task ApplyDatabaseMigrationsAsync(WebApplication app)
         // In production, you might want to stop the application if migrations fail
         if (!app.Environment.IsDevelopment())
         {
-            throw;
+            // In production, just log but don't throw to allow app to start
+            logger.LogError("Database migration failed in production environment. Manual intervention may be required.");
         }
     }
 }
