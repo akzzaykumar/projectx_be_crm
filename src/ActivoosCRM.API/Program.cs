@@ -11,6 +11,13 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel to listen on port 8080 for Azure App Service
+builder.WebHost.ConfigureKestrel(options =>
+{
+    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+    options.ListenAnyIP(int.Parse(port));
+});
+
 // Add environment variables support
 builder.Configuration.AddEnvironmentVariables();
 
@@ -37,14 +44,14 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 // Add Authentication
 // Environment variables take precedence over appsettings
-var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") 
-    ?? builder.Configuration["Jwt:SecretKey"] 
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+    ?? builder.Configuration["Jwt:SecretKey"]
     ?? throw new InvalidOperationException("JWT Secret not configured. Set JWT_SECRET_KEY environment variable.");
 var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER")
-    ?? builder.Configuration["Jwt:Issuer"] 
+    ?? builder.Configuration["Jwt:Issuer"]
     ?? "ActivoosCRM";
 var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
-    ?? builder.Configuration["Jwt:Audience"] 
+    ?? builder.Configuration["Jwt:Audience"]
     ?? "ActivoosCRM";
 
 builder.Services.AddAuthentication(options =>
@@ -73,23 +80,29 @@ builder.Services.AddAuthentication(options =>
     var googleClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")
         ?? builder.Configuration["Authentication:Google:ClientSecret"];
 
-    if (string.IsNullOrEmpty(googleClientId) || string.IsNullOrEmpty(googleClientSecret))
+    // Only configure Google OAuth if credentials are provided
+    if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret) &&
+        googleClientId != "your-google-client-id.apps.googleusercontent.com" &&
+        googleClientSecret != "your-google-client-secret")
     {
-        throw new InvalidOperationException("Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.");
+        options.ClientId = googleClientId;
+        options.ClientSecret = googleClientSecret;
+
+        // Configure callback path
+        options.CallbackPath = "/signin-google";
+
+        // Request additional user information scopes
+        options.Scope.Add("profile");
+        options.Scope.Add("email");
+
+        // Save tokens for later use
+        options.SaveTokens = true;
     }
-
-    options.ClientId = googleClientId;
-    options.ClientSecret = googleClientSecret;
-
-    // Configure callback path
-    options.CallbackPath = "/signin-google";
-
-    // Request additional user information scopes
-    options.Scope.Add("profile");
-    options.Scope.Add("email");
-
-    // Save tokens for later use
-    options.SaveTokens = true;
+    else
+    {
+        // Log warning that Google OAuth is not configured
+        Log.Warning("Google OAuth is not properly configured. Google authentication will not be available.");
+    }
 });
 
 builder.Services.AddAuthorization();
