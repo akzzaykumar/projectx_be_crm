@@ -1,3 +1,4 @@
+using ActivoosCRM.API.Configuration;
 using ActivoosCRM.Application;
 using ActivoosCRM.Infrastructure;
 using ActivoosCRM.Infrastructure.Persistence;
@@ -9,6 +10,12 @@ using Serilog;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add environment variables support
+builder.Configuration.AddEnvironmentVariables();
+
+// Validate configuration early
+ConfigurationValidator.ValidateConfiguration(builder.Configuration);
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -29,9 +36,16 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Add Authentication
-var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT Secret not configured");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ActivoosCRM";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ActivoosCRM";
+// Environment variables take precedence over appsettings
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") 
+    ?? builder.Configuration["Jwt:SecretKey"] 
+    ?? throw new InvalidOperationException("JWT Secret not configured. Set JWT_SECRET_KEY environment variable.");
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER")
+    ?? builder.Configuration["Jwt:Issuer"] 
+    ?? "ActivoosCRM";
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
+    ?? builder.Configuration["Jwt:Audience"] 
+    ?? "ActivoosCRM";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -54,10 +68,18 @@ builder.Services.AddAuthentication(options =>
 })
 .AddGoogle(options =>
 {
-    options.ClientId = builder.Configuration["Authentication:Google:ClientId"]
-        ?? throw new InvalidOperationException("Google ClientId not configured");
-    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]
-        ?? throw new InvalidOperationException("Google ClientSecret not configured");
+    var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+        ?? builder.Configuration["Authentication:Google:ClientId"];
+    var googleClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")
+        ?? builder.Configuration["Authentication:Google:ClientSecret"];
+
+    if (string.IsNullOrEmpty(googleClientId) || string.IsNullOrEmpty(googleClientSecret))
+    {
+        throw new InvalidOperationException("Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.");
+    }
+
+    options.ClientId = googleClientId;
+    options.ClientSecret = googleClientSecret;
 
     // Configure callback path
     options.CallbackPath = "/signin-google";

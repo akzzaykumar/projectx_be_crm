@@ -1,3 +1,6 @@
+````markdown
+# projectx_be_crm
+
 # ActivoosCRM - Production-Ready CRM API
 
 A clean architecture .NET 9 Web API with PostgreSQL for customer relationship management, activity booking, and business analytics.
@@ -292,18 +295,56 @@ docker-compose logs -f
 
 ### Environment Variables
 
+The application supports environment variables for all configuration settings, making it perfect for cloud deployment.
+
+**For local development**, copy `.env.example` to `.env` and configure your settings.
+
+**For Azure App Service**, set environment variables in Configuration → Application Settings.
+
 ```bash
-# Database
-ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=activoos_crm;Username=postgres;Password=postgres"
+# Database (Option 1: Full connection string)
+DATABASE_CONNECTION_STRING="Host=localhost;Port=5432;Database=activoos_crm;Username=postgres;Password=postgres"
 
-# JWT
-Jwt__Secret="YourSuperSecretKeyHere"
-Jwt__Issuer="ActivoosCRM"
-Jwt__Audience="ActivoosCRM"
+# Database (Option 2: Individual components)
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=activoos_crm_dev
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
 
-# Logging
-Serilog__MinimumLevel__Default="Information"
+# JWT (Required)
+JWT_SECRET_KEY=YourSuperSecretKeyMinimum32CharactersRequired
+JWT_ISSUER=ActivoosCRM
+JWT_AUDIENCE=ActivoosCRM
+
+# Google OAuth (Required for Google Sign-In)
+GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-secret
+
+# Application
+ASPNETCORE_ENVIRONMENT=Development
+ASPNETCORE_URLS=http://localhost:5154
+CORS_ORIGINS=http://localhost:3000
 ```
+
+📚 **See full configuration guide**: [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)
+
+## ☁️ Cloud Deployment
+
+### Azure App Service
+
+This application is ready for Azure App Service deployment with environment variable configuration.
+
+**Quick Start**:
+```bash
+# Use the interactive setup script
+.\scripts\azure-setup-env.ps1
+```
+
+📚 **Deployment Guides**:
+- [Azure Quick Start](docs/AZURE_QUICK_START.md) - Fast deployment reference
+- [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step instructions
+- [Environment Variables](docs/ENVIRONMENT_VARIABLES.md) - Configuration reference
 
 ## 📄 License
 

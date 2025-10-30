@@ -21,10 +21,15 @@ public static class DependencyInjection
     /// <returns>Service collection</returns>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        // Database
+        // Database - Environment variables take precedence
+        var connectionString = Environment.GetEnvironmentVariable("DATABASE_CONNECTION_STRING")
+            ?? BuildConnectionStringFromEnvironment()
+            ?? configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Database connection string not configured. Set DATABASE_CONNECTION_STRING or individual DATABASE_* environment variables.");
+
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(
-                configuration.GetConnectionString("DefaultConnection"),
+                connectionString,
                 b => b.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName)));
 
         services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
@@ -51,5 +56,24 @@ public static class DependencyInjection
         services.AddScoped<IRazorpayService, RazorpayService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Build connection string from individual environment variables
+    /// </summary>
+    private static string? BuildConnectionStringFromEnvironment()
+    {
+        var host = Environment.GetEnvironmentVariable("DATABASE_HOST");
+        var port = Environment.GetEnvironmentVariable("DATABASE_PORT");
+        var database = Environment.GetEnvironmentVariable("DATABASE_NAME");
+        var username = Environment.GetEnvironmentVariable("DATABASE_USER");
+        var password = Environment.GetEnvironmentVariable("DATABASE_PASSWORD");
+
+        if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(database))
+        {
+            return null;
+        }
+
+        return $"Host={host};Port={port ?? "5432"};Database={database};Username={username};Password={password}";
     }
 }
