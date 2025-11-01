@@ -13,15 +13,15 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ActivoosCRM.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251025165340_NormalizedSchema")]
-    partial class NormalizedSchema
+    [Migration("20251031134804_InitialAzureSetup")]
+    partial class InitialAzureSetup
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.10")
+                .HasAnnotation("ProductVersion", "8.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -409,9 +409,6 @@ namespace ActivoosCRM.Infrastructure.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("UserId1")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -442,9 +439,6 @@ namespace ActivoosCRM.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_activity_providers_user_id");
 
-                    b.HasIndex("UserId1")
-                        .IsUnique();
-
                     b.ToTable("activity_providers", (string)null);
                 });
 
@@ -466,7 +460,7 @@ namespace ActivoosCRM.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
-                    b.PrimitiveCollection<List<int>>("DaysOfWeek")
+                    b.Property<List<int>>("DaysOfWeek")
                         .IsRequired()
                         .HasColumnType("jsonb");
 
@@ -820,11 +814,9 @@ namespace ActivoosCRM.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.PrimitiveCollection<List<Guid>>("ApplicableCategories")
+                    b.Property<List<Guid>>("ApplicableCategories")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValue(new List<Guid>());
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -1167,6 +1159,88 @@ namespace ActivoosCRM.Infrastructure.Migrations
                         .HasDatabaseName("ix_locations_coordinates");
 
                     b.ToTable("locations", (string)null);
+                });
+
+            modelBuilder.Entity("ActivoosCRM.Domain.Entities.LocationRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("text");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RejectionReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LocationId");
+
+                    b.HasIndex("ProviderId");
+
+                    b.ToTable("LocationRequests");
                 });
 
             modelBuilder.Entity("ActivoosCRM.Domain.Entities.Notification", b =>
@@ -1549,8 +1623,23 @@ namespace ActivoosCRM.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int>("EmailResendCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmailVerificationAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EmailVerificationToken")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("EmailVerificationTokenExpiry")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("EmailVerifiedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalAuthProvider")
+                        .HasColumnType("text");
 
                     b.Property<int>("FailedLoginAttempts")
                         .HasColumnType("integer");
@@ -1560,6 +1649,9 @@ namespace ActivoosCRM.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("GoogleId")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -1568,6 +1660,15 @@ namespace ActivoosCRM.Infrastructure.Migrations
 
                     b.Property<bool>("IsEmailVerified")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsExternalAuth")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastEmailResendAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastEmailVerificationAttempt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
@@ -1709,17 +1810,14 @@ namespace ActivoosCRM.Infrastructure.Migrations
                 {
                     b.HasOne("ActivoosCRM.Domain.Entities.Location", "Location")
                         .WithMany()
-                        .HasForeignKey("LocationId");
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ActivoosCRM.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
+                        .WithOne("ActivityProvider")
+                        .HasForeignKey("ActivoosCRM.Domain.Entities.ActivityProvider", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("ActivoosCRM.Domain.Entities.User", null)
-                        .WithOne("ActivityProvider")
-                        .HasForeignKey("ActivoosCRM.Domain.Entities.ActivityProvider", "UserId1");
 
                     b.Navigation("Location");
 
@@ -1824,6 +1922,23 @@ namespace ActivoosCRM.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ActivoosCRM.Domain.Entities.LocationRequest", b =>
+                {
+                    b.HasOne("ActivoosCRM.Domain.Entities.Location", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId");
+
+                    b.HasOne("ActivoosCRM.Domain.Entities.ActivityProvider", "Provider")
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Location");
+
+                    b.Navigation("Provider");
                 });
 
             modelBuilder.Entity("ActivoosCRM.Domain.Entities.Notification", b =>
