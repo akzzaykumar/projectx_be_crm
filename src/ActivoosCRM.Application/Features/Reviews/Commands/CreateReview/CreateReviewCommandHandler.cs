@@ -16,15 +16,18 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, R
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ILoyaltyService _loyaltyService;
     private readonly ILogger<CreateReviewCommandHandler> _logger;
 
     public CreateReviewCommandHandler(
         IApplicationDbContext context,
         ICurrentUserService currentUserService,
+        ILoyaltyService loyaltyService,
         ILogger<CreateReviewCommandHandler> logger)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _loyaltyService = loyaltyService;
         _logger = logger;
     }
 
@@ -82,6 +85,25 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, R
             // Update activity and provider ratings
             await UpdateActivityRatings(booking.ActivityId, cancellationToken);
             await UpdateProviderRatings(booking.Activity.ProviderId, cancellationToken);
+
+            // Award loyalty points for review
+            try
+            {
+                await _loyaltyService.AwardReviewPointsAsync(
+                    review.Id,
+                    cancellationToken);
+
+                _logger.LogInformation(
+                    "Loyalty points awarded for review {ReviewId}",
+                    review.Id);
+            }
+            catch (Exception loyaltyEx)
+            {
+                _logger.LogError(loyaltyEx,
+                    "Failed to award loyalty points for review {ReviewId}. Review creation succeeded.",
+                    review.Id);
+                // Don't fail review creation if loyalty points award fails
+            }
 
             _logger.LogInformation("Review {ReviewId} created for booking {BookingId} by user {UserId}",
                 review.Id, booking.Id, currentUserId);

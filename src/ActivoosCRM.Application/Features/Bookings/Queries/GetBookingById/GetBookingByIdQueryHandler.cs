@@ -71,6 +71,8 @@ public class GetBookingByIdQueryHandler : IRequestHandler<GetBookingByIdQuery, R
             SubtotalAmount = booking.SubtotalAmount,
             DiscountAmount = booking.DiscountAmount,
             TaxAmount = booking.TaxAmount,
+            CommissionAmount = booking.CommissionAmount,
+            ProviderPayoutAmount = booking.ProviderPayoutAmount,
             TotalAmount = booking.TotalAmount,
             Currency = booking.Currency,
 

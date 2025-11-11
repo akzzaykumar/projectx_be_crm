@@ -2,6 +2,7 @@ using ActivoosCRM.Application.Common.Interfaces;
 using ActivoosCRM.Application.Common.Models;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ActivoosCRM.Application.Features.Bookings.Commands.CompleteBooking;
 
@@ -9,13 +10,19 @@ public class CompleteBookingCommandHandler : IRequestHandler<CompleteBookingComm
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ILoyaltyService _loyaltyService;
+    private readonly ILogger<CompleteBookingCommandHandler> _logger;
 
     public CompleteBookingCommandHandler(
         IApplicationDbContext context,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ILoyaltyService loyaltyService,
+        ILogger<CompleteBookingCommandHandler> logger)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _loyaltyService = loyaltyService;
+        _logger = logger;
     }
 
     public async Task<Result<Unit>> Handle(CompleteBookingCommand request, CancellationToken cancellationToken)
@@ -56,6 +63,25 @@ public class CompleteBookingCommandHandler : IRequestHandler<CompleteBookingComm
         {
             booking.Complete();
             await _context.SaveChangesAsync(cancellationToken);
+
+            // Award loyalty points for completed booking
+            try
+            {
+                await _loyaltyService.AwardBookingPointsAsync(
+                    booking.Id,
+                    cancellationToken);
+
+                _logger.LogInformation(
+                    "Loyalty points awarded for completed booking {BookingId}",
+                    booking.Id);
+            }
+            catch (Exception loyaltyEx)
+            {
+                _logger.LogError(loyaltyEx,
+                    "Failed to award loyalty points for booking {BookingId}. Booking completion succeeded.",
+                    booking.Id);
+                // Don't fail booking completion if loyalty points award fails
+            }
 
             return Result<Unit>.CreateSuccess(Unit.Value, "Booking completed successfully");
         }

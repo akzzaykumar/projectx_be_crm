@@ -3,6 +3,7 @@ using ActivoosCRM.Application.Common.Models;
 using ActivoosCRM.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ActivoosCRM.Application.Features.Bookings.Commands.CreateBooking;
 
@@ -13,13 +14,22 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IAvailabilityService _availabilityService;
+    private readonly ICouponService _couponService;
+    private readonly ILogger<CreateBookingCommandHandler> _logger;
 
     public CreateBookingCommandHandler(
         IApplicationDbContext context,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IAvailabilityService availabilityService,
+        ICouponService couponService,
+        ILogger<CreateBookingCommandHandler> logger)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _availabilityService = availabilityService;
+        _couponService = couponService;
+        _logger = logger;
     }
 
     public async Task<Result<CreateBookingResponse>> Handle(
@@ -64,6 +74,20 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             return Result<CreateBookingResponse>.CreateFailure("Activity is not available for booking");
         }
 
+        // FIXED: Check availability against schedules
+        var availabilityCheck = await _availabilityService.CheckAvailabilityAsync(
+            activity.Id,
+            request.BookingDate.Date,
+            request.BookingTime,
+            request.NumberOfParticipants,
+            cancellationToken);
+
+        if (!availabilityCheck.IsAvailable)
+        {
+            return Result<CreateBookingResponse>.CreateFailure(
+                availabilityCheck.Reason ?? "Activity is not available at the selected time");
+        }
+
         // Calculate pricing
         var pricePerParticipant = activity.EffectivePrice;
         var subtotal = pricePerParticipant * request.NumberOfParticipants;
@@ -94,16 +118,40 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
             booking.AddCustomerNotes(request.CustomerNotes);
         }
 
-        // TODO: Apply coupon if provided
-        // This would require a Coupon service to validate and calculate discount
+        // Apply coupon if provided
         if (!string.IsNullOrWhiteSpace(request.CouponCode))
         {
-            // Placeholder for coupon validation
-            // var couponResult = await _couponService.ValidateAndApply(request.CouponCode, subtotal);
-            // if (couponResult.IsValid)
-            // {
-            //     booking.ApplyDiscount(couponResult.DiscountAmount, request.CouponCode, couponResult.DiscountPercentage);
-            // }
+            var couponResult = await _couponService.ValidateCouponAsync(
+                request.CouponCode,
+                activity.Id,
+                subtotal,
+                userId.Value,
+                cancellationToken);
+
+            if (couponResult.IsValid && couponResult.CouponId.HasValue)
+            {
+                // Apply discount to booking
+                booking.ApplyDiscount(
+                    couponResult.DiscountAmount,
+                    request.CouponCode,
+                    couponResult.DiscountPercentage);
+
+                _logger.LogInformation(
+                    "Coupon {CouponCode} applied to booking. Discount: {Discount}",
+                    request.CouponCode,
+                    couponResult.DiscountAmount);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Failed to apply coupon {CouponCode}: {Error}",
+                    request.CouponCode,
+                    couponResult.ErrorMessage);
+                
+                // Return error if coupon validation failed
+                return Result<CreateBookingResponse>.CreateFailure(
+                    couponResult.ErrorMessage ?? "Invalid coupon code");
+            }
         }
 
         // Add booking to context
@@ -127,6 +175,34 @@ public class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand,
 
         // Save changes
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Record coupon usage if coupon was applied
+        if (!string.IsNullOrWhiteSpace(booking.CouponCode))
+        {
+            try
+            {
+                // Find the coupon by code to get its ID
+                var coupon = await _context.Coupons
+                    .FirstOrDefaultAsync(c => c.Code == booking.CouponCode.ToUpperInvariant(), cancellationToken);
+
+                if (coupon != null)
+                {
+                    await _couponService.ApplyCouponToBookingAsync(
+                        coupon.Id,
+                        booking.Id,
+                        userId.Value,
+                        booking.DiscountAmount,
+                        cancellationToken);
+
+                    _logger.LogInformation("Coupon usage recorded for booking {BookingId}", booking.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to record coupon usage for booking {BookingId}", booking.Id);
+                // Don't fail the booking creation if coupon usage recording fails
+            }
+        }
 
         // Return response
         var response = new CreateBookingResponse

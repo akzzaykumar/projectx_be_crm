@@ -45,6 +45,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<ActivityTag> ActivityTags => Set<ActivityTag>();
     public DbSet<BookingParticipant> BookingParticipants => Set<BookingParticipant>();
     public DbSet<ProviderContact> ProviderContacts => Set<ProviderContact>();
+    public DbSet<GiftCard> GiftCards => Set<GiftCard>();
+    public DbSet<GiftCardTransaction> GiftCardTransactions => Set<GiftCardTransaction>();
+    public DbSet<LoyaltyPoint> LoyaltyPoints => Set<LoyaltyPoint>();
+    public DbSet<UserLoyaltyStatus> UserLoyaltyStatuses => Set<UserLoyaltyStatus>();
+    public DbSet<PricingRule> PricingRules => Set<PricingRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

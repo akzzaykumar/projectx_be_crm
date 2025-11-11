@@ -27,44 +27,28 @@ public class BookingsController : ControllerBase
     private readonly ILogger<BookingsController> _logger;
     private readonly IConfiguration _configuration;
     private readonly IApplicationDbContext _context;
+    private readonly IRazorpayService _razorpayService;
+    private readonly INotificationService _notificationService;
 
     public BookingsController(
         IMediator mediator,
         ILogger<BookingsController> logger,
         IConfiguration configuration,
-        IApplicationDbContext context)
+        IApplicationDbContext context,
+        IRazorpayService razorpayService,
+        INotificationService notificationService)
     {
         _mediator = mediator;
         _logger = logger;
         _configuration = configuration;
         _context = context;
+        _razorpayService = razorpayService;
+        _notificationService = notificationService;
     }
 
     /// <summary>
     /// Get user's bookings with filters and pagination
     /// </summary>
-    /// <remarks>
-    /// Sample request:
-    ///
-    ///     GET /api/Bookings?page=1&amp;pageSize=10&amp;status=Confirmed&amp;fromDate=2025-01-01&amp;toDate=2025-12-31
-    ///
-    /// Query parameters:
-    /// - **page**: Page number (default: 1)
-    /// - **pageSize**: Items per page (default: 10, max: 50)
-    /// - **status**: Filter by booking status (Pending/Confirmed/Completed/Cancelled/Refunded)
-    /// - **fromDate**: Filter bookings from date (format: yyyy-MM-dd)
-    /// - **toDate**: Filter bookings to date (format: yyyy-MM-dd)
-    /// - **activityId**: Filter by specific activity GUID
-    ///
-    /// Returns paginated list of user's bookings with:
-    /// - Booking details (reference, date, time, participants, status)
-    /// - Total amount and currency
-    /// - Activity information (title, location, provider)
-    /// - Payment status
-    /// - Actions (canBeCancelled flag)
-    /// </remarks>
-    /// <response code="200">Returns paginated list of bookings</response>
-    /// <response code="401">Not authenticated</response>
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetBookings([FromQuery] GetBookingsQuery query)
@@ -82,25 +66,6 @@ public class BookingsController : ControllerBase
     /// <summary>
     /// Get booking details by ID
     /// </summary>
-    /// <param name="id">Booking GUID</param>
-    /// <remarks>
-    /// Returns complete booking information including:
-    /// - Full booking details with pricing breakdown
-    /// - Activity details (title, description, duration, location, provider)
-    /// - Customer information
-    /// - Payment details and status
-    /// - Participant list with details
-    /// - Computed flags (canBeCancelled, isPaid, isUpcoming)
-    /// - All timestamps (created, confirmed, completed, cancelled, checked-in)
-    ///
-    /// Authorization:
-    /// - Customers can view their own bookings
-    /// - Providers can view bookings for their activities
-    /// </remarks>
-    /// <response code="200">Returns booking details</response>
-    /// <response code="401">Not authenticated</response>
-    /// <response code="403">Not authorized to view this booking</response>
-    /// <response code="404">Booking not found</response>
     [HttpGet("{id}")]
     [Authorize]
     public async Task<IActionResult> GetBookingById(Guid id)
@@ -126,35 +91,6 @@ public class BookingsController : ControllerBase
     /// <summary>
     /// Cancel a booking
     /// </summary>
-    /// <param name="id">Booking GUID</param>
-    /// <param name="command">Cancellation details</param>
-    /// <remarks>
-    /// Sample request:
-    ///
-    ///     PUT /api/Bookings/550e8400-e29b-41d4-a716-446655440001/cancel
-    ///     {
-    ///       "cancellationReason": "Change of plans"
-    ///     }
-    ///
-    /// Cancellation policy and refunds:
-    /// - **48+ hours before**: Full refund (100%)
-    /// - **24-48 hours before**: Partial refund (50%)
-    /// - **Less than 24 hours**: No refund
-    ///
-    /// Process:
-    /// 1. Validates customer owns the booking
-    /// 2. Checks if booking can be cancelled (status: Pending or Confirmed)
-    /// 3. Calculates refund amount based on time until booking
-    /// 4. Cancels booking and processes refund if applicable
-    /// 5. Returns refund details
-    ///
-    /// Refunds are processed within 5-7 business days to original payment method.
-    /// </remarks>
-    /// <response code="200">Booking cancelled successfully</response>
-    /// <response code="400">Cannot cancel booking (wrong status or validation errors)</response>
-    /// <response code="401">Not authenticated</response>
-    /// <response code="403">Not authorized to cancel this booking</response>
-    /// <response code="404">Booking not found</response>
     [HttpPut("{id}/cancel")]
     [Authorize(Roles = "Customer")]
     public async Task<IActionResult> CancelBooking(Guid id, [FromBody] CancelBookingRequest request)
@@ -181,22 +117,6 @@ public class BookingsController : ControllerBase
     /// <summary>
     /// Confirm a booking (Provider only)
     /// </summary>
-    /// <param name="id">Booking GUID</param>
-    /// <remarks>
-    /// Provider action to confirm a pending booking.
-    ///
-    /// Requirements:
-    /// - User must be authenticated as Activity Provider
-    /// - Provider must own the activity
-    /// - Booking must be in Pending status
-    ///
-    /// Note: Bookings are auto-confirmed when payment is captured through webhook
-    /// </remarks>
-    /// <response code="200">Booking confirmed successfully</response>
-    /// <response code="400">Cannot confirm booking (wrong status)</response>
-    /// <response code="401">Not authenticated</response>
-    /// <response code="403">Not authorized - Provider only</response>
-    /// <response code="404">Booking not found</response>
     [HttpPut("{id}/confirm")]
     [Authorize(Roles = "ActivityProvider")]
     public async Task<IActionResult> ConfirmBooking(Guid id)
@@ -222,23 +142,6 @@ public class BookingsController : ControllerBase
     /// <summary>
     /// Mark booking as completed (Provider only)
     /// </summary>
-    /// <param name="id">Booking GUID</param>
-    /// <remarks>
-    /// Provider action to mark a confirmed booking as completed after the activity.
-    ///
-    /// Requirements:
-    /// - User must be authenticated as Activity Provider
-    /// - Provider must own the activity
-    /// - Booking must be in Confirmed status
-    /// - Booking date must have passed
-    ///
-    /// This action enables the customer to leave a review.
-    /// </remarks>
-    /// <response code="200">Booking completed successfully</response>
-    /// <response code="400">Cannot complete booking (wrong status or date not passed)</response>
-    /// <response code="401">Not authenticated</response>
-    /// <response code="403">Not authorized - Provider only</response>
-    /// <response code="404">Booking not found</response>
     [HttpPut("{id}/complete")]
     [Authorize(Roles = "ActivityProvider")]
     public async Task<IActionResult> CompleteBooking(Guid id)
@@ -264,23 +167,6 @@ public class BookingsController : ControllerBase
     /// <summary>
     /// Check-in a customer for booking (Provider only)
     /// </summary>
-    /// <param name="id">Booking GUID</param>
-    /// <remarks>
-    /// Provider action to check-in a customer on the day of the activity.
-    ///
-    /// Requirements:
-    /// - User must be authenticated as Activity Provider
-    /// - Provider must own the activity
-    /// - Booking must be in Confirmed status
-    /// - Booking date must be today
-    ///
-    /// Use this to track customer attendance and manage capacity.
-    /// </remarks>
-    /// <response code="200">Customer checked-in successfully</response>
-    /// <response code="400">Cannot check-in (wrong status or date not today)</response>
-    /// <response code="401">Not authenticated</response>
-    /// <response code="403">Not authorized - Provider only</response>
-    /// <response code="404">Booking not found</response>
     [HttpPut("{id}/checkin")]
     [Authorize(Roles = "ActivityProvider")]
     public async Task<IActionResult> CheckInBooking(Guid id)
@@ -306,55 +192,6 @@ public class BookingsController : ControllerBase
     /// <summary>
     /// Create a new booking
     /// </summary>
-    /// <param name="command">Booking creation details</param>
-    /// <remarks>
-    /// Sample request:
-    ///
-    ///     POST /api/Bookings
-    ///     {
-    ///       "activityId": "550e8400-e29b-41d4-a716-446655440001",
-    ///       "bookingDate": "2025-11-15",
-    ///       "bookingTime": "09:00:00",
-    ///       "numberOfParticipants": 2,
-    ///       "specialRequests": "Vegetarian lunch required",
-    ///       "participantNames": "John Doe, Jane Doe",
-    ///       "customerNotes": "First time diving",
-    ///       "participants": [
-    ///         {
-    ///           "name": "John Doe",
-    ///           "age": 28,
-    ///           "gender": "Male",
-    ///           "contactPhone": "+919876543210"
-    ///         },
-    ///         {
-    ///           "name": "Jane Doe",
-    ///           "age": 26,
-    ///           "gender": "Female"
-    ///         }
-    ///       ],
-    ///       "couponCode": "FIRSTTIME20"
-    ///     }
-    ///
-    /// Requirements:
-    /// - User must be authenticated with Customer profile
-    /// - Activity must be active and available
-    /// - Number of participants must be within activity limits
-    /// - Booking date must not be in the past
-    ///
-    /// Process:
-    /// 1. Validates activity availability
-    /// 2. Checks participant count against activity limits
-    /// 3. Applies coupon discount if provided (if valid)
-    /// 4. Calculates total amount
-    /// 5. Creates booking in Pending status
-    /// 6. Adds participant details if provided
-    /// 7. Returns booking ID and reference for payment
-    ///
-    /// Next step: Proceed to /api/Payments/initiate with the bookingId to complete payment
-    /// </remarks>
-    /// <response code="201">Booking created successfully</response>
-    /// <response code="400">Validation errors or business rule violations</response>
-    /// <response code="401">Not authenticated</response>
     [HttpPost]
     [Authorize(Roles = "Customer")]
     public async Task<IActionResult> CreateBooking([FromBody] CreateBookingCommand command)
@@ -374,34 +211,8 @@ public class BookingsController : ControllerBase
 
     /// <summary>
     /// Payment gateway webhook handler (Razorpay)
+    /// FIXED: Now searches by order ID first, then updates transaction ID
     /// </summary>
-    /// <param name="request">Webhook payload from payment gateway</param>
-    /// <remarks>
-    /// This endpoint receives callbacks from the payment gateway (Razorpay) to update payment status.
-    ///
-    /// Webhook events handled:
-    /// - **payment.captured**: Payment successfully completed
-    /// - **payment.failed**: Payment attempt failed
-    /// - **refund.created**: Refund processed
-    ///
-    /// Process:
-    /// 1. Verifies webhook signature for security
-    /// 2. Validates payment gateway transaction ID
-    /// 3. Updates payment status in database
-    /// 4. Auto-confirms booking if payment successful
-    /// 5. Logs event for monitoring
-    ///
-    /// Security:
-    /// - Signature verification using HMAC-SHA256 with gateway secret key
-    /// - Idempotency handling for duplicate webhooks
-    /// - All events are logged for audit trail
-    ///
-    /// Configuration:
-    /// - Set RazorpayWebhookSecret in appsettings.json
-    /// - Configure this URL in Razorpay dashboard: https://api.funbookr.com/api/Bookings/webhook/payment
-    /// </remarks>
-    /// <response code="200">Webhook processed successfully</response>
-    /// <response code="400">Invalid signature or payload</response>
     [HttpPost("webhook/payment")]
     [AllowAnonymous]
     public async Task<IActionResult> PaymentWebhook([FromBody] PaymentWebhookRequest request)
@@ -418,7 +229,12 @@ public class BookingsController : ControllerBase
                 return BadRequest(new { success = false, message = "Signature required" });
             }
 
-            var isValid = VerifyRazorpaySignature(request, signature);
+            var webhookBody = await new StreamReader(Request.Body).ReadToEndAsync();
+            var isValid = _razorpayService.VerifyWebhookSignature(
+                webhookBody, 
+                signature, 
+                _configuration["Razorpay:WebhookSecret"] ?? string.Empty);
+
             if (!isValid)
             {
                 _logger.LogWarning("Invalid webhook signature for event: {Event}", request.Event);
@@ -435,38 +251,6 @@ public class BookingsController : ControllerBase
         {
             _logger.LogError(ex, "Error processing payment webhook");
             return StatusCode(500, new { success = false, message = "Internal server error" });
-        }
-    }
-
-    private bool VerifyRazorpaySignature(PaymentWebhookRequest request, string signature)
-    {
-        try
-        {
-            var webhookSecret = _configuration["Razorpay:WebhookSecret"];
-            if (string.IsNullOrEmpty(webhookSecret))
-            {
-                _logger.LogWarning("Razorpay webhook secret not configured");
-                return false;
-            }
-
-            // Serialize payload to JSON
-            var payload = JsonSerializer.Serialize(request.Payload);
-            var encoding = new UTF8Encoding();
-            var keyBytes = encoding.GetBytes(webhookSecret);
-            var payloadBytes = encoding.GetBytes(payload);
-
-            // Compute HMAC-SHA256
-            using var hmac = new HMACSHA256(keyBytes);
-            var hash = hmac.ComputeHash(payloadBytes);
-            var computedSignature = BitConverter.ToString(hash).Replace("-", "").ToLower();
-
-            // Compare signatures
-            return computedSignature.Equals(signature, StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error verifying Razorpay signature");
-            return false;
         }
     }
 
@@ -489,7 +273,7 @@ public class BookingsController : ControllerBase
                 break;
 
             case "refund.created":
-                _logger.LogInformation("Refund webhook received - no action required");
+                await HandleRefundCreated(request.Payload);
                 break;
 
             default:
@@ -500,6 +284,9 @@ public class BookingsController : ControllerBase
 
     private async Task HandlePaymentCaptured(Dictionary<string, object> payload)
     {
+        // Use a database transaction for atomicity
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        
         try
         {
             // Extract payment details from payload
@@ -513,6 +300,8 @@ public class BookingsController : ControllerBase
                 JsonSerializer.Serialize(payload["payment"]));
 
             var transactionId = paymentObj.GetProperty("id").GetString();
+            var orderId = paymentObj.TryGetProperty("order_id", out var orderIdProp)
+                ? orderIdProp.GetString() : null;
             var amount = paymentObj.GetProperty("amount").GetInt64() / 100m; // Convert paise to rupees
             var method = paymentObj.TryGetProperty("method", out var methodProp)
                 ? methodProp.GetString() : null;
@@ -529,14 +318,19 @@ public class BookingsController : ControllerBase
                 return;
             }
 
-            // Find payment by gateway transaction ID
+            // FIXED: Search by order ID first, then by transaction ID
             var payment = await _context.Payments
                 .Include(p => p.Booking)
-                .FirstOrDefaultAsync(p => p.PaymentGatewayTransactionId == transactionId);
+                    .ThenInclude(b => b.Customer)
+                        .ThenInclude(c => c.User)
+                .FirstOrDefaultAsync(p => 
+                    p.PaymentGatewayOrderId == orderId || 
+                    p.PaymentGatewayTransactionId == transactionId);
 
             if (payment == null)
             {
-                _logger.LogWarning("Payment not found for transaction ID: {TransactionId}", transactionId);
+                _logger.LogWarning("Payment not found for order ID: {OrderId} or transaction ID: {TransactionId}", 
+                    orderId, transactionId);
                 return;
             }
 
@@ -544,39 +338,74 @@ public class BookingsController : ControllerBase
             if (payment.Status == Domain.Enums.PaymentStatus.Completed)
             {
                 _logger.LogInformation("Payment already marked as completed: {TransactionId}", transactionId);
+                await transaction.CommitAsync();
                 return;
             }
 
             // Mark payment as completed
             var gatewayResponse = JsonSerializer.Serialize(payload);
             payment.MarkAsCompleted(
-                transactionId,
+                transactionId!,
                 method,
                 cardLast4,
                 cardBrand,
                 gatewayResponse);
 
-            // Auto-confirm booking
+            // Auto-confirm booking using system user (created in migrations)
             if (payment.Booking != null &&
                 payment.Booking.Status == Domain.Enums.BookingStatus.Pending)
             {
-                // Use system user ID for auto-confirmation (or a specific webhook user ID)
-                var systemUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
-                payment.Booking.Confirm(systemUserId);
-
-                _logger.LogInformation(
-                    "Booking auto-confirmed: {BookingId} for payment: {TransactionId}",
-                    payment.Booking.Id,
-                    transactionId);
+                // Get system user ID from configuration or use a predefined constant
+                var systemUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == "system@funbookr.com");
+                
+                if (systemUser != null)
+                {
+                    payment.Booking.Confirm(systemUser.Id);
+                    
+                    _logger.LogInformation(
+                        "Booking auto-confirmed: {BookingReference} for payment: {TransactionId}",
+                        payment.Booking.BookingReference,
+                        transactionId);
+                }
+                else
+                {
+                    _logger.LogWarning("System user not found - booking not auto-confirmed");
+                }
             }
 
             await _context.SaveChangesAsync(default);
+            await transaction.CommitAsync();
 
-            // TODO: Send email/push notification to customer
-            _logger.LogInformation("Payment captured successfully: {TransactionId}", transactionId);
+            // Send payment success notification to customer
+            if (payment.Booking?.Customer != null)
+            {
+                try
+                {
+                    await _notificationService.SendPaymentSuccessAsync(
+                        payment.BookingId,
+                        payment.Booking.Customer.UserId,
+                        amount,
+                        default);
+                    
+                    _logger.LogInformation(
+                        "Payment success notification sent for booking: {BookingReference}",
+                        payment.Booking.BookingReference);
+                }
+                catch (Exception notifEx)
+                {
+                    _logger.LogError(notifEx,
+                        "Failed to send payment success notification for booking: {BookingId}",
+                        payment.BookingId);
+                }
+            }
+            
+            _logger.LogInformation("Payment captured successfully: {TransactionId}, Amount: {Amount}",
+                transactionId, amount);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "Error handling payment.captured webhook");
             throw;
         }
@@ -597,6 +426,8 @@ public class BookingsController : ControllerBase
                 JsonSerializer.Serialize(payload["payment"]));
 
             var transactionId = paymentObj.GetProperty("id").GetString();
+            var orderId = paymentObj.TryGetProperty("order_id", out var orderIdProp)
+                ? orderIdProp.GetString() : null;
             var errorReason = paymentObj.TryGetProperty("error_description", out var reasonProp)
                 ? reasonProp.GetString() : "Payment failed";
 
@@ -606,29 +437,92 @@ public class BookingsController : ControllerBase
                 return;
             }
 
-            // Find payment
+            // FIXED: Search by order ID first
             var payment = await _context.Payments
-                .FirstOrDefaultAsync(p => p.PaymentGatewayTransactionId == transactionId);
+                .FirstOrDefaultAsync(p => 
+                    p.PaymentGatewayOrderId == orderId || 
+                    p.PaymentGatewayTransactionId == transactionId);
 
             if (payment == null)
             {
-                _logger.LogWarning("Payment not found for transaction ID: {TransactionId}", transactionId);
+                _logger.LogWarning("Payment not found for order ID: {OrderId} or transaction ID: {TransactionId}", 
+                    orderId, transactionId);
                 return;
             }
 
             // Mark payment as failed
             var gatewayResponse = JsonSerializer.Serialize(payload);
-            payment.MarkAsFailed(errorReason, gatewayResponse);
+            payment.MarkAsFailed(errorReason ?? "Payment failed", gatewayResponse);
 
             await _context.SaveChangesAsync(default);
 
-            // TODO: Send email notification to customer about failed payment
-            _logger.LogInformation("Payment marked as failed: {TransactionId}", transactionId);
+            // Send payment failure notification to customer
+            if (payment.Booking != null)
+            {
+                var booking = await _context.Bookings
+                    .Include(b => b.Customer)
+                    .FirstOrDefaultAsync(b => b.Id == payment.BookingId);
+                    
+                if (booking?.Customer != null)
+                {
+                    try
+                    {
+                        await _notificationService.SendPaymentFailureAsync(
+                            payment.BookingId,
+                            booking.Customer.UserId,
+                            errorReason ?? "Payment failed",
+                            default);
+                        
+                        _logger.LogInformation(
+                            "Payment failure notification sent for booking: {BookingReference}",
+                            booking.BookingReference);
+                    }
+                    catch (Exception notifEx)
+                    {
+                        _logger.LogError(notifEx,
+                            "Failed to send payment failure notification for booking: {BookingId}",
+                            payment.BookingId);
+                    }
+                }
+            }
+            
+            _logger.LogInformation("Payment marked as failed: {TransactionId}, Reason: {Reason}",
+                transactionId, errorReason);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling payment.failed webhook");
             throw;
+        }
+    }
+
+    private async Task HandleRefundCreated(Dictionary<string, object> payload)
+    {
+        try
+        {
+            if (!payload.ContainsKey("refund"))
+            {
+                _logger.LogWarning("Refund object missing in payload");
+                return;
+            }
+
+            var refundObj = JsonSerializer.Deserialize<JsonElement>(
+                JsonSerializer.Serialize(payload["refund"]));
+
+            var refundId = refundObj.GetProperty("id").GetString();
+            var paymentId = refundObj.GetProperty("payment_id").GetString();
+            var amount = refundObj.GetProperty("amount").GetInt64() / 100m;
+
+            _logger.LogInformation(
+                "Refund created: {RefundId} for Payment: {PaymentId}, Amount: {Amount}",
+                refundId, paymentId, amount);
+
+            // Payment refund status is already updated by the cancellation flow
+            // This webhook is just for confirmation and logging
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling refund.created webhook");
         }
     }
 }
@@ -649,4 +543,3 @@ public record CancelBookingRequest
 {
     public string CancellationReason { get; init; } = string.Empty;
 }
-

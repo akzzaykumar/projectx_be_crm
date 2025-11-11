@@ -71,6 +71,28 @@ public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, R
             _context.Users.Add(user);
             await _context.SaveChangesAsync(cancellationToken);
 
+            // Create initial loyalty status for customer
+            if (request.Role == Domain.Enums.UserRole.Customer)
+            {
+                try
+                {
+                    var loyaltyStatus = Domain.Entities.UserLoyaltyStatus.Create(user.Id);
+                    _context.UserLoyaltyStatuses.Add(loyaltyStatus);
+                    await _context.SaveChangesAsync(cancellationToken);
+
+                    _logger.LogInformation(
+                        "Loyalty status created for new user {UserId}",
+                        user.Id);
+                }
+                catch (Exception loyaltyEx)
+                {
+                    _logger.LogError(loyaltyEx,
+                        "Failed to create loyalty status for user {UserId}. Registration succeeded.",
+                        user.Id);
+                    // Don't fail registration if loyalty creation fails
+                }
+            }
+
             _logger.LogInformation("User registered successfully with ID: {UserId}", user.Id);
 
             // Send verification email (don't fail registration if email fails)

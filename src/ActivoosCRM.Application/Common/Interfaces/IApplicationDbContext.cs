@@ -84,6 +84,41 @@ public interface IApplicationDbContext
     DbSet<Wishlist> Wishlists { get; }
 
     /// <summary>
+    /// Activity Schedules DbSet
+    /// </summary>
+    DbSet<ActivitySchedule> ActivitySchedules { get; }
+
+    /// <summary>
+    /// Gift Cards DbSet
+    /// </summary>
+    DbSet<GiftCard> GiftCards { get; }
+
+    /// <summary>
+    /// Gift Card Transactions DbSet
+    /// </summary>
+    DbSet<GiftCardTransaction> GiftCardTransactions { get; }
+
+    /// <summary>
+    /// Loyalty Points DbSet
+    /// </summary>
+    DbSet<LoyaltyPoint> LoyaltyPoints { get; }
+
+    /// <summary>
+    /// User Loyalty Status DbSet
+    /// </summary>
+    DbSet<UserLoyaltyStatus> UserLoyaltyStatuses { get; }
+
+    /// <summary>
+    /// Pricing Rules DbSet
+    /// </summary>
+    DbSet<PricingRule> PricingRules { get; }
+
+    /// <summary>
+    /// Database instance for transactions
+    /// </summary>
+    Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
+
+    /// <summary>
     /// Save changes to the database
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>

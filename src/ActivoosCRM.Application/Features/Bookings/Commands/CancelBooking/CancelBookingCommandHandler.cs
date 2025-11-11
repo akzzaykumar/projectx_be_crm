@@ -107,22 +107,76 @@ public class CancelBookingCommandHandler : IRequestHandler<CancelBookingCommand,
         // Process refund if applicable
         if (refundAmount > 0 && booking.Payment != null)
         {
-            booking.ProcessRefund(refundAmount);
-
-            // Process refund through payment gateway
-            if (refundAmount >= booking.TotalAmount)
+            try
             {
-                // TODO: Get actual refund transaction ID from payment gateway API call
-                booking.Payment.ProcessFullRefund("REFUND_TXN_" + Guid.NewGuid().ToString("N")[..16], "Cancelled by customer");
-            }
-            else
-            {
-                // TODO: Get actual refund transaction ID from payment gateway API call
-                booking.Payment.ProcessPartialRefund(refundAmount, "REFUND_TXN_" + Guid.NewGuid().ToString("N")[..16], "Partial refund - cancelled by customer");
-            }
+                // Initiate actual refund with Razorpay
+                if (!string.IsNullOrEmpty(booking.Payment.PaymentGatewayTransactionId))
+                {
+                    _logger.LogInformation(
+                        "Initiating Razorpay refund for payment {PaymentId}, amount: {Amount}",
+                        booking.Payment.PaymentGatewayTransactionId,
+                        refundAmount);
 
-            // TODO: Initiate actual refund with payment gateway (Razorpay)
-            // This would involve calling the payment gateway API to process the refund
+                    var refundResponse = await _razorpayService.CreateRefundAsync(
+                        booking.Payment.PaymentGatewayTransactionId,
+                        refundAmount,
+                        $"Booking cancellation - {request.CancellationReason}",
+                        cancellationToken);
+
+                    // Update booking with refund information
+                    booking.ProcessRefund(refundAmount);
+
+                    // Update payment with refund details from gateway
+                    if (refundAmount >= booking.TotalAmount)
+                    {
+                        booking.Payment.ProcessFullRefund(
+                            refundResponse.RefundId,
+                            "Cancelled by customer - full refund");
+                    }
+                    else
+                    {
+                        booking.Payment.ProcessPartialRefund(
+                            refundAmount,
+                            refundResponse.RefundId,
+                            "Cancelled by customer - partial refund");
+                    }
+
+                    _logger.LogInformation(
+                        "Razorpay refund created successfully. Refund ID: {RefundId}",
+                        refundResponse.RefundId);
+                }
+                else
+                {
+                    // Fallback for bookings without gateway payment ID
+                    _logger.LogWarning(
+                        "No gateway payment ID found for booking {BookingId}. Creating mock refund.",
+                        booking.Id);
+
+                    booking.ProcessRefund(refundAmount);
+
+                    var mockRefundId = $"REFUND_{Guid.NewGuid().ToString("N")[..16]}";
+                    if (refundAmount >= booking.TotalAmount)
+                    {
+                        booking.Payment.ProcessFullRefund(mockRefundId, "Cancelled by customer");
+                    }
+                    else
+                    {
+                        booking.Payment.ProcessPartialRefund(
+                            refundAmount,
+                            mockRefundId,
+                            "Partial refund - cancelled by customer");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing refund for booking {BookingId}", booking.Id);
+                
+                // Still mark the booking as cancelled but note the refund processing error
+                refundStatus = "Refund Processing Failed - Please Contact Support";
+                
+                // Don't throw - continue with cancellation
+            }
         }
 
         await _context.SaveChangesAsync(cancellationToken);

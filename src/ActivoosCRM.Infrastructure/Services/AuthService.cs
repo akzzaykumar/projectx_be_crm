@@ -30,13 +30,24 @@ public class AuthService : IAuthService
         _jwtAudience = _configuration["Jwt:Audience"] ?? "ActivoosCRM";
     }
 
-    public async Task<(string AccessToken, string RefreshToken)> GenerateTokensAsync(int userId, string email, string role)
+    public async Task<(string AccessToken, string RefreshToken)> GenerateTokensAsync(Guid userId, string email, string role)
     {
-        // TODO: Implement when User entity is created
-        throw new NotImplementedException("User entity not yet implemented");
+        var accessToken = GenerateAccessToken(userId, email, role);
+        var refreshToken = GenerateRefreshToken();
+        
+        // Find user and set refresh token
+        var user = await _context.Users.FindAsync(userId);
+        if (user != null)
+        {
+            var refreshTokenExpiry = DateTime.UtcNow.AddDays(30); // 30 days default
+            user.SetRefreshToken(refreshToken, refreshTokenExpiry);
+            await _context.SaveChangesAsync(default);
+        }
+        
+        return (accessToken, refreshToken);
     }
 
-    private string GenerateAccessToken(int userId, string email, string role)
+    private string GenerateAccessToken(Guid userId, string email, string role)
     {
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSecret));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -68,7 +79,7 @@ public class AuthService : IAuthService
         return Convert.ToBase64String(randomBytes);
     }
 
-    public async Task<(int UserId, string Email, string Role)?> ValidateTokenAsync(string token)
+    public async Task<(Guid UserId, string Email, string Role)?> ValidateTokenAsync(string token)
     {
         try
         {
@@ -98,7 +109,12 @@ public class AuthService : IAuthService
                 return null;
             }
 
-            return (int.Parse(userIdClaim), emailClaim, roleClaim);
+            if (!Guid.TryParse(userIdClaim, out var userId))
+            {
+                return null;
+            }
+            
+            return (userId, emailClaim, roleClaim);
         }
         catch
         {
@@ -108,14 +124,41 @@ public class AuthService : IAuthService
 
     public async Task<(string AccessToken, string RefreshToken)?> RefreshTokensAsync(string refreshToken)
     {
-        // TODO: Implement when User entity is created
-        throw new NotImplementedException("User entity not yet implemented");
+        // Find user with matching refresh token
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.RefreshToken == refreshToken && !u.IsDeleted);
+            
+        if (user == null)
+            return null;
+            
+        // Check if refresh token is expired
+        if (user.RefreshTokenExpiry == null || user.RefreshTokenExpiry.Value <= DateTime.UtcNow)
+            return null;
+            
+        // Check if user is active
+        if (!user.IsActive)
+            return null;
+            
+        // Generate new tokens
+        var newAccessToken = GenerateAccessToken(user.Id, user.Email, user.Role.ToString());
+        var newRefreshToken = GenerateRefreshToken();
+        
+        // Update user's refresh token
+        var newRefreshTokenExpiry = DateTime.UtcNow.AddDays(30);
+        user.SetRefreshToken(newRefreshToken, newRefreshTokenExpiry);
+        await _context.SaveChangesAsync(default);
+        
+        return (newAccessToken, newRefreshToken);
     }
 
-    public async Task RevokeRefreshTokenAsync(int userId)
+    public async Task RevokeRefreshTokenAsync(Guid userId)
     {
-        // TODO: Implement when User entity is created
-        throw new NotImplementedException("User entity not yet implemented");
+        var user = await _context.Users.FindAsync(userId);
+        if (user != null)
+        {
+            user.ClearRefreshToken();
+            await _context.SaveChangesAsync(default);
+        }
     }
 
     public string HashPassword(string password)

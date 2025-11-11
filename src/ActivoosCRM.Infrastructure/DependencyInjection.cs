@@ -40,11 +40,23 @@ public static class DependencyInjection
         // Email Configuration
         services.Configure<EmailSettings>(configuration.GetSection("Email"));
 
-        // Services
+        // Core Services
         services.AddScoped<IPasswordHashingService, PasswordHashingService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IAuthService, AuthService>();
+        
+        // Business Services
+        services.AddScoped<ICouponService, CouponService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IAvailabilityService, AvailabilityService>();
+        services.AddScoped<IGiftCardService, GiftCardService>();
+        services.AddScoped<ILoyaltyService, LoyaltyService>();
+        services.AddScoped<IAnalyticsService, AnalyticsService>();
+        // services.AddScoped<IPricingRuleService, PricingRuleService>(); // TODO: Implement PricingRuleService
+        // services.AddScoped<IAdminManagementService, AdminManagementService>(); // TODO: Implement if needed
+        // services.AddScoped<ISystemSettingsService, SystemSettingsService>(); // TODO: Implement if needed
 
         // Register payment gateway services
         services.AddHttpClient("Razorpay")
